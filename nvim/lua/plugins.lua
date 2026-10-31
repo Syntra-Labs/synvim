@@ -116,34 +116,6 @@ return {
         },
       }
 
-      local function agent_status()
-        local ok, agent = pcall(require, "agent")
-        if not ok then return "" end
-        if agent.state.is_busy then
-          return "● [Agent: analyzing...]"
-        elseif agent.state.pending_diff then
-          return "● [DIFF: :GitReview]"
-        elseif agent.state.queue and #agent.state.queue > 0 then
-          local cur = agent.state.queue[agent.state.queue_index]
-          return string.format("● [%d/%d] %s", agent.state.queue_index, #agent.state.queue, cur and cur.path or "")
-        end
-        return "● Agent"
-      end
-
-      local function agent_color()
-        local ok, agent = pcall(require, "agent")
-        if ok then
-          if agent.state.is_busy then
-            return { fg = colors.orange, gui = "bold" }
-          elseif agent.state.pending_diff then
-            return { fg = colors.diff_add, gui = "bold" }
-          elseif agent.state.queue and #agent.state.queue > 0 then
-            return { fg = colors.cyan, gui = "bold" }
-          end
-        end
-        return { fg = colors.fg_muted }
-      end
-
       require("lualine").setup({
         options = {
           icons_enabled = true,
@@ -189,7 +161,7 @@ return {
 
                 -- Clean formatting for terminal buffers (no ugly term://...//pid: or padlock)
                 if bt == "terminal" or name:match("^term://") then
-                  local ui_mod = package.loaded["agent.ui"]
+                  local ui_mod = package.loaded["synvim.ui"]
                   local live_cwd = ui_mod and ui_mod.get_terminal_cwd and ui_mod.get_terminal_cwd(buf)
                   local dir, shell = nil, nil
                   if not live_cwd then
@@ -245,9 +217,10 @@ return {
           },
           lualine_x = {
             {
-              agent_status,
-              color = agent_color,
+              "filetype",
+              color = { fg = colors.fg_muted },
             },
+          },
             {
               "encoding",
               color = { fg = colors.fg_muted },

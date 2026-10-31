@@ -35,7 +35,7 @@ vim.api.nvim_create_autocmd("TermOpen", {
 	callback = function()
 		vim.opt_local.background = "light"
 		-- Terminal buffers are output, not files: no line numbers, no sign column
-		-- (task: line numbers were showing up on the left of the terminal).
+		-- (fix: line numbers were showing up on the left of the terminal).
 		vim.opt_local.number = false
 		vim.opt_local.relativenumber = false
 		vim.opt_local.signcolumn = "no"
@@ -71,7 +71,7 @@ vim.g.terminal_color_15 = "#ffffff" -- bright white
 
 -- Remember where the terminal we are in is `cd`-ed to, so a terminal opened
 -- afterwards starts in that directory instead of the directory nvim itself was
--- launched from. (Task: after opening a file from a terminal, opening a new
+-- launched from. (Note: after opening a file from a terminal, opening a new
 -- terminal dropped you back in nvim's original cwd rather than the working
 -- directory you were actually in.)
 local last_term_cwd = nil
@@ -94,7 +94,7 @@ end
 -- scrolling back through output and switching splits always jumped to the bottom.
 -- Now the view (and Normal mode) stays put and you enter terminal mode by typing
 -- (i/a/...), i.e. only when you actually start typing
--- (task: keep the cursor where the user was looking).
+-- (keep the cursor where the user was looking).
 vim.api.nvim_create_autocmd({ "BufEnter", "TermEnter" }, {
 	pattern = "term://*",
 	callback = remember_term_cwd,
@@ -114,7 +114,7 @@ vim.api.nvim_create_autocmd("TermOpen", {
 -- foreground (a CLI app, a pager, ...) we pass <Esc> straight through. This is a
 -- single-key mapping, so a lone <Esc> is handled immediately — unlike the old
 -- <Esc><Esc> mapping, which made nvim hold every <Esc> for `timeoutlen` and thus
--- broke Esc inside CLI apps (task: esc key must work inside the terminal).
+-- broke Esc inside CLI apps (esc key must work inside the terminal).
 -- <C-\><C-n> still unconditionally leaves Terminal mode, even mid-command.
 local function terminal_shell_is_foreground()
 	local job = vim.b.terminal_job_id

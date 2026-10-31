@@ -823,18 +823,6 @@ function M.search_docs(clean_query, root)
     end
   end
 
-  -- 4. Also surface matching language-agnostic algorithms & data structures from CP-Algorithms / NIST DADS
-  local ok_alg, algos_mod = pcall(require, "agent.algos")
-  if ok_alg and algos_mod then
-    local algo_hits = algos_mod.search(q, nil)
-    for _, ah in ipairs(algo_hits) do
-      if ah.score >= 220 then
-        table.insert(results, ah)
-        if #results >= 65 then break end
-      end
-    end
-  end
-
   return results
 end
 
@@ -934,10 +922,9 @@ function M.search_public_code(clean_query, root)
   return results
 end
 
---- Search language-agnostic algorithms & data structures (`@algo`: CP-Algorithms + NIST DADS catalog & live articles)
+--- Search language-agnostic algorithms & data structures (`@algo`)
 function M.search_algo(clean_query, root)
-  local algos_mod = require("agent.algos")
-  return algos_mod.search(clean_query or "", M.http_get)
+  return {}
 end
 
 --- Search codebase (both file names/paths and file contents) across entire repo, specified locations, or external providers
@@ -1190,7 +1177,7 @@ function M.get_initial_candidates(root, locations, limit)
   local seen = {}
 
   -- 1. Recently visited files from :History
-  local ok_hist, history = pcall(require, "agent.history")
+  local ok_hist, history = pcall(require, "synvim.history")
   if ok_hist and history.get_history then
     for _, h in ipairs(history.get_history()) do
       local rel = h.rel_path or h.path
@@ -1280,7 +1267,7 @@ function M.close_find_menu()
   M.state.line_to_head_col = {}
 end
 
---- Update the docked bottom Code Context & Task Placement Inspector Bar below the :Find floating box
+--- Update the docked bottom Code Context Inspector Bar below the :Find floating box
 function M.update_find_inspector()
   local insp_buf = M.state.inspector_buf
   local insp_win = M.state.inspector_win
@@ -1292,22 +1279,9 @@ function M.update_find_inspector()
   local width = M.state.width or 96
   local root = M.state.root or ui.get_root_dir()
 
-  local p_state = state_mod.state
-  local placement_badge = ""
-  if p_state.placement_active and p_state.placement_queue and #p_state.placement_queue > 0 then
-    local p_idx = p_state.placement_index or 1
-    local cur_spec = p_state.placement_queue[p_idx]
-    if cur_spec then
-      placement_badge = string.format(
-        " │ 📌 Placement [%d/%d]: CONTRACT(%s) [<M-p>: Drop]",
-        p_idx, #p_state.placement_queue, cur_spec.task_id or "task"
-      )
-    end
-  end
-
   if not chosen then
     local empty_lines = {
-      " No match selected" .. placement_badge,
+      " No match selected",
       " ────────────────────────────────────────────────────────────────────────",
       " Type a query in the search bar above to inspect matching code context.",
       " Supports file names, symbols, natural language, 'in <dir>', and '@<path>'.",
@@ -1336,21 +1310,12 @@ function M.update_find_inspector()
     kind_tag = "[CODE]"
   end
 
-  local header_line
-  if placement_badge ~= "" then
-    local short_path = chosen.path:match("([^/]+)$") or chosen.path
-    header_line = string.format(
-      " [%d/%d] %s:%d%s",
-      idx, #candidates, short_path, chosen.line or 1, placement_badge
-    )
-  else
-    header_line = string.format(
-      " [%d/%d] %s %s:%d:%d  (Score: %.1f)",
-      idx, #candidates, kind_tag, chosen.path, chosen.line or 1, chosen.col or 1, tonumber(chosen.score) or 0.0
-    )
-    if #header_line > width then
-      header_line = header_line:sub(1, width - 1) .. "…"
-    end
+  local header_line = string.format(
+    " [%d/%d] %s %s:%d:%d  (Score: %.1f)",
+    idx, #candidates, kind_tag, chosen.path, chosen.line or 1, chosen.col or 1, tonumber(chosen.score) or 0.0
+  )
+  if #header_line > width then
+    header_line = header_line:sub(1, width - 1) .. "…"
   end
 
   local insp_lines = { header_line }
@@ -1476,11 +1441,8 @@ function M.update_find_inspector()
   end
 
   if insp_win and vim.api.nvim_win_is_valid(insp_win) then
-    local insp_title = p_state.placement_active
-      and " Code Context & Task Placement Target (<M-p>: Drop Task Here | <CR>: Jump) "
-      or " Code Context & Match Inspector "
     pcall(vim.api.nvim_win_set_config, insp_win, {
-      title = insp_title,
+      title = " Code Context & Match Inspector ",
       title_pos = "left",
     })
   end
@@ -1823,15 +1785,9 @@ function M.select_prev(step)
   end
 end
 
---- Open a virtual documentation, theorem (@loogle), algorithm (@algo), or public code (@code) result in a syntax-highlighted scratch buffer
+--- Open a virtual documentation, theorem (@loogle), or public code (@code) result in a syntax-highlighted scratch buffer
 function M.open_virtual_result(chosen, target_win)
   if not chosen then return end
-  if chosen.algo_entry then
-    local ok_alg, algos_mod = pcall(require, "agent.algos")
-    if ok_alg and algos_mod then
-      chosen.virtual_lines = algos_mod.build_virtual_lines(chosen.algo_entry, M.http_get)
-    end
-  end
   if type(chosen.virtual_lines) ~= "table" then return end
   target_win = target_win or ui.get_primary_editor_win() or vim.api.nvim_get_current_win()
   if not vim.api.nvim_win_is_valid(target_win) then
@@ -1877,10 +1833,7 @@ function M.activate_selected_result(close_after, explicit_idx)
   end
 
   M.state.selected_idx = idx
-  state_mod.state.queue = candidates
-  state_mod.state.queue_index = idx
 
-  local tasks_mod = require("agent.tasks")
   local floating_win = M.state.win
 
   if close_after then
@@ -1896,12 +1849,19 @@ function M.activate_selected_result(close_after, explicit_idx)
   if chosen.is_virtual and type(chosen.virtual_lines) == "table" then
     M.open_virtual_result(chosen, target_win)
   else
-    tasks_mod.jump_to_target(chosen, target_win)
-  end
-  if state_mod.state.placement_active then
-    pcall(tasks_mod.render_placement_preview)
-  else
-    tasks_mod.update_queue_display(#candidates > 1)
+    if target_win and vim.api.nvim_win_is_valid(target_win) then
+      vim.api.nvim_set_current_win(target_win)
+    end
+    local root = M.state.root or ui.get_root_dir()
+    local full_path = chosen.path:match("^/") and chosen.path or (root .. "/" .. chosen.path)
+    if vim.fn.filereadable(full_path) == 1 then
+      vim.cmd("edit " .. vim.fn.fnameescape(full_path))
+      local l_count = vim.api.nvim_buf_line_count(0)
+      local t_line = math.min(l_count, math.max(1, chosen.line or 1))
+      local t_col = math.max(0, (chosen.col or 1) - 1)
+      pcall(vim.api.nvim_win_set_cursor, 0, { t_line, t_col })
+      pcall(function() vim.cmd("normal! zz") end)
+    end
   end
 
   if not close_after and floating_win and vim.api.nvim_win_is_valid(floating_win) then
@@ -1946,17 +1906,6 @@ function M.activate_selected_result(close_after, explicit_idx)
     end
   end
 
-  return chosen
-end
-
---- Jump to the selected :Find result AND immediately drop the active queued task at that line (<M-p> in :Find)
-function M.drop_task_at_selected_result(explicit_idx)
-  local chosen = M.activate_selected_result(true, explicit_idx)
-  if not chosen then return nil end
-  if state_mod.state.placement_active then
-    local tasks_mod = require("agent.tasks")
-    return tasks_mod.drop_current_task_at_cursor()
-  end
   return chosen
 end
 
@@ -2021,7 +1970,7 @@ function M.open_find_menu(initial_query, root_override, callback, opts)
   vim.wo[win].relativenumber = false
   vim.wo[win].signcolumn = "no"
 
-  -- Create docked bottom Code Context & Task Placement Inspector Bar (matching :History)
+  -- Create docked bottom Code Context Inspector Bar (matching :History)
   local insp_buf = vim.api.nvim_create_buf(false, true)
   vim.bo[insp_buf].buftype = "nofile"
   vim.bo[insp_buf].bufhidden = "wipe"
@@ -2135,7 +2084,6 @@ function M.open_find_menu(initial_query, root_override, callback, opts)
   -- Keymaps: Both Insert mode (in search bar) and Normal mode (in search bar or results list)
   for _, m in ipairs({ "i", "n" }) do
     vim.keymap.set(m, "<CR>", function() M.activate_selected_result(true) end, { buffer = buf, silent = true, nowait = true, desc = "Jump to selected result and close" })
-    vim.keymap.set(m, "<M-p>", function() M.drop_task_at_selected_result() end, { buffer = buf, silent = true, nowait = true, desc = "Jump to selected result and drop active queued task here" })
     vim.keymap.set(m, "<Down>", function() M.select_next(1) end, { buffer = buf, silent = true, nowait = true, desc = "Next search result" })
     vim.keymap.set(m, "<Up>", function() M.select_prev(1) end, { buffer = buf, silent = true, nowait = true, desc = "Previous search result" })
     vim.keymap.set(m, "<C-n>", function() M.select_next(1) end, { buffer = buf, silent = true, nowait = true, desc = "Next search result" })
@@ -2194,251 +2142,6 @@ function M.find(query, root_override, callback)
   end
   query = vim.trim(query or "")
   return M.open_find_menu(query, root_override, callback)
-end
-
---- Ask a question about the code: navigates to the exact lines that answer it
-function M.ask(question, root_override, callback)
-  if type(root_override) == "function" then
-    callback = root_override
-    root_override = nil
-  end
-
-  question = question or ""
-  -- Unescape literal \n or \r\n from command-line arguments
-  question = question:gsub("\\r\\n", "\n"):gsub("\\n", "\n")
-  question = vim.trim(question)
-
-  if question == "" then
-    ui.open_multiline_input("Ask Code Question (multi-line & multi-question)", "", function(submitted_text)
-      M.ask(submitted_text, root_override, callback)
-    end)
-    return
-  end
-
-  local root = root_override or ui.get_root_dir()
-  local state = state_mod.state
-  local llm_mod = require("agent.llm")
-  local tasks_mod = require("agent.tasks")
-
-  -- Identify currently open buffer and determine if it is genuinely relevant
-  local cur_win = ui.get_primary_editor_win()
-  local cur_buf = cur_win and vim.api.nvim_win_is_valid(cur_win) and vim.api.nvim_win_get_buf(cur_win)
-  local cur_file = (cur_buf and vim.bo[cur_buf].buftype == "") and vim.api.nvim_buf_get_name(cur_buf) or ""
-  local rel_cur_file = ""
-  if cur_file ~= "" and not cur_file:match("^%a+://") then
-    rel_cur_file = vim.fn.fnamemodify(cur_file, ":.")
-  end
-
-  local sub_questions = M.split_questions(question)
-  local is_multi = (#sub_questions > 1)
-
-  local candidates = {}
-  local sub_candidates = {}
-
-  if is_multi then
-    for idx, sub_q in ipairs(sub_questions) do
-      local cands = M.search_and_rank(sub_q, root)
-      sub_candidates[idx] = cands
-      for _, c in ipairs(cands) do
-        table.insert(candidates, c)
-      end
-    end
-  else
-    candidates = M.search_and_rank(question, root)
-    sub_candidates[1] = candidates
-  end
-
-  local cur_file_is_relevant = false
-  for idx = 1, math.min(3, #candidates) do
-    if candidates[idx].path == rel_cur_file then
-      cur_file_is_relevant = true
-      break
-    end
-  end
-
-  local cand_lines = {}
-  for i = 1, math.min(8, #candidates) do
-    local c = candidates[i]
-    table.insert(cand_lines, string.format("- %s:%d: %s", c.path, c.line, vim.trim(c.description or "")))
-  end
-  local cand_str = #cand_lines > 0 and ("\nRanked repository code matches:\n" .. table.concat(cand_lines, "\n")) or ""
-
-  local anti_blind_comment_rule = ""
-  if rel_cur_file ~= "" and not cur_file_is_relevant then
-    anti_blind_comment_rule = string.format(
-      "\nCRITICAL: Currently open file is '%s', which is UNRELATED to the question(s). Do NOT place active_target or comments in '%s'! Target the relevant file(s) (e.g. '%s').\n",
-      rel_cur_file, rel_cur_file, candidates[1] and candidates[1].path or "the matching file"
-    )
-  end
-
-  local prompt
-  if is_multi then
-    local q_list = {}
-    for i, sq in ipairs(sub_questions) do
-      table.insert(q_list, string.format("Question %d: '%s'", i, sq))
-    end
-    prompt = string.format(
-      [[The developer asked MULTIPLE questions about the codebase:
-%s%s%s
-
-INSTRUCTIONS FOR MULTIPLE QUESTIONS:
-1. active_target MUST pinpoint the exact file and line answering Question 1, with an in-line clarifying comment (e.g. // NOTE: ... or # NOTE: ... or -- NOTE: ...) in active_target.content.
-2. In 'queue', provide an entry for EACH subsequent question (Question 2, Question 3, etc.) containing:
-   - "path": repository-relative path to the file answering that question.
-   - "line": line number answering that question.
-   - "description": "[Q%%d] Summary of answer to Question %%d",
-   - "content": concise in-line clarifying comment for that question.
-3. Output STRICT JSON with "action": "navigate", "active_target": {...}, "queue": [...] ]],
-      table.concat(q_list, "\n"), cand_str, anti_blind_comment_rule
-    )
-  else
-    prompt = string.format(
-      [[Code question: '%s'.%s%s
-
-INSTRUCTIONS:
-1. Pinpoint the exact source file and line answering this question.
-2. In active_target.content, produce a concise, professional in-line comment (using the target language's native comment prefix, e.g. // NOTE: ... or # NOTE: ... or -- NOTE: ...) placed directly above the target line that makes the code self-documenting and clarifies the answer.
-3. Output STRICT JSON with "action": "navigate", "active_target": {"path": "<file>", "line": <line>, "content": "<comment + target line>"}]],
-      question, cand_str, anti_blind_comment_rule
-    )
-  end
-
-  vim.api.nvim_echo({ { "● [Navigating to Code] ", "ModeMsg" }, { is_multi and string.format("Locating answers for %d questions...", #sub_questions) or "Locating line & preparing in-line clarification...", "Comment" } }, false, {})
-
-  llm_mod.run(prompt, false, function(res)
-    local target = res and res.active_target
-    local function sanitize_item(it, default_best, label)
-      if not it or not it.path or it.path == "" then
-        if default_best then
-          return {
-            path = default_best.path,
-            line = default_best.line,
-            col = default_best.col or 1,
-            action = "navigate",
-            description = (label and ("[" .. label .. "] ") or "") .. default_best.description,
-            content = nil,
-          }
-        end
-        return nil
-      end
-      local t_path = vim.trim(it.path)
-      if t_path:sub(1, #root) == root then
-        t_path = t_path:sub(#root + 1):gsub("^/+", "")
-      end
-      t_path = t_path:gsub("^/+", ""):gsub("^%./", "")
-
-      local full_t = t_path:match("^/") and t_path or (root .. "/" .. t_path)
-      local full_c = cur_file ~= "" and (cur_file:match("^/") and cur_file or (root .. "/" .. cur_file)) or ""
-      local is_blind = (full_t == full_c or t_path == rel_cur_file) and not cur_file_is_relevant
-      local exists = (vim.fn.filereadable(full_t) == 1)
-
-      if (not exists or is_blind) and default_best then
-        local leader = tasks_mod.get_comment_leader(default_best.path)
-        local comment_text = it.content and (it.content:match("NOTE:%s*(.*)") or it.content:match("[#/%-]+%s*(.*)") or it.content)
-        local clean_content = comment_text and string.format("%s NOTE: %s", leader, vim.trim(comment_text)) or nil
-        return {
-          path = default_best.path,
-          line = default_best.line,
-          col = default_best.col or 1,
-          action = "navigate",
-          description = (label and ("[" .. label .. "] ") or "") .. default_best.description,
-          content = clean_content,
-        }
-      end
-
-      return {
-        path = t_path,
-        line = tonumber(it.line) or 1,
-        col = tonumber(it.col) or 1,
-        action = "navigate",
-        description = (label and ("[" .. label .. "] ") or "") .. (it.description or t_path),
-        content = it.content,
-      }
-    end
-
-    local q1_best = (sub_candidates[1] and sub_candidates[1][1]) or candidates[1]
-    target = sanitize_item(target, q1_best, is_multi and "Q1" or nil)
-
-    local full_queue = {}
-    if target then table.insert(full_queue, target) end
-
-    if is_multi then
-      if res and res.queue and #res.queue > 0 then
-        for q_idx, q_item in ipairs(res.queue) do
-          local sub_best = (sub_candidates[q_idx + 1] and sub_candidates[q_idx + 1][1]) or candidates[q_idx + 1]
-          local clean_q = sanitize_item(q_item, sub_best, string.format("Q%d", q_idx + 1))
-          if clean_q then table.insert(full_queue, clean_q) end
-        end
-      end
-
-      if #full_queue < #sub_questions then
-        for q_idx = #full_queue + 1, #sub_questions do
-          local sub_c = sub_candidates[q_idx]
-          if sub_c and #sub_c > 0 then
-            local best_c = sub_c[1]
-            local leader = tasks_mod.get_comment_leader(best_c.path)
-            local clean_q = {
-              path = best_c.path,
-              line = best_c.line,
-              col = best_c.col or 1,
-              action = "navigate",
-              description = string.format("[Q%d] %s", q_idx, best_c.description),
-              content = string.format("%s NOTE: [Q%d] Answering: %s", leader, q_idx, sub_questions[q_idx]),
-            }
-            table.insert(full_queue, clean_q)
-          end
-        end
-      end
-    elseif res and res.queue and #res.queue > 0 then
-      for _, q_item in ipairs(res.queue) do
-        local clean_q = sanitize_item(q_item, nil, nil)
-        if clean_q and (clean_q.path ~= target.path or clean_q.line ~= target.line) then
-          table.insert(full_queue, clean_q)
-        end
-      end
-    end
-
-    if #full_queue == 0 and #candidates > 0 then
-      full_queue = candidates
-      target = candidates[1]
-    end
-
-    if target and target.path and (vim.fn.filereadable(root .. "/" .. target.path) == 1 or target.path:match("^/")) then
-      state.queue = full_queue
-      state.queue_index = 1
-      tasks_mod.jump_to_target(target, cur_win)
-      tasks_mod.update_queue_display(#full_queue > 1)
-      if is_multi then
-        vim.api.nvim_echo({
-          { string.format("● [Code Located: %d Questions Answered] ", #full_queue), "ModeMsg" },
-          { string.format("[Q1] %s:%d", target.path, target.line or 1), "Directory" },
-          { " — Use <C-n> / :Tasks next to navigate all answers", "Normal" },
-        }, false, {})
-      else
-        vim.api.nvim_echo({
-          { "● [Code Located] ", "ModeMsg" },
-          { string.format("%s:%d", target.path, target.line or 1), "Directory" },
-          { target.description and (" — " .. target.description) or " (clarification previewed in-line)", "Normal" },
-        }, false, {})
-      end
-      if callback then callback(target, full_queue) end
-    elseif #candidates > 0 then
-      local best = candidates[1]
-      state.queue = candidates
-      state.queue_index = 1
-      tasks_mod.jump_to_target(best, cur_win)
-      tasks_mod.update_queue_display(#candidates > 1)
-      vim.api.nvim_echo({
-        { "● [Code Located (Local)] ", "ModeMsg" },
-        { string.format("%s:%d", best.path, best.line), "Directory" },
-        { string.format(" — %s", best.description), "Normal" },
-      }, false, {})
-      if callback then callback(best, candidates) end
-    else
-      vim.notify("Could not locate code answering: '" .. question .. "'", vim.log.levels.WARN)
-      if callback then callback(nil, {}) end
-    end
-  end)
 end
 
 return M

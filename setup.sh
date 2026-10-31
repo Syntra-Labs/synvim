@@ -19,6 +19,12 @@ echo "=========================================================="
 
 echo "==> [1/2] Deploying Neovim configuration..."
 mkdir -p "$TARGET_DIR"
+mkdir -p "$LOCAL_BIN"
+
+# Link scribe CLI if present in sibling directory
+if [[ -x "$SCRIPT_DIR/../scribe/bin/scribe" ]]; then
+    ln -sf "$SCRIPT_DIR/../scribe/bin/scribe" "$LOCAL_BIN/scribe"
+fi
 
 # Clean up deprecated legacy modules if upgrading
 rm -rf "$TARGET_DIR/lua/agent" "$TARGET_DIR/lua/agent.lua" "$TARGET_DIR/bin"

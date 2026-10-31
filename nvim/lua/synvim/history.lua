@@ -91,7 +91,7 @@ local function get_line_snippet(bufnr, path, line_nr)
   return ""
 end
 
---- Find the closest in-tree task (TODO/FIXME/SPEC/contract) or nearest symbol to cursor line
+--- Find the nearest function or symbol definition to cursor line
 function M.find_closest_anchor(filepath, target_line)
   if not filepath or vim.fn.filereadable(filepath) ~= 1 then
     return { type = "line", line = target_line or 1, label = string.format("line %d", target_line or 1) }
@@ -118,55 +118,7 @@ function M.find_closest_anchor(filepath, target_line)
 
   target_line = math.min(#lines, math.max(1, target_line or 1))
 
-  -- 1. Scan for in-tree task contracts
-  local tasks_mod = require("agent.tasks")
-  local best_task = nil
-  local min_task_dist = 999999
-
-  for idx, l in ipairs(lines) do
-    local is_comment = l:find("^%s*//") or l:find("^%s*#") or l:find("^%s*%-%-") or l:find("^%s*/%*") or l:find("^%s*%- %[ %]")
-    if is_comment then
-      local has_tag = l:find("%f[%a]TODO%f[%A]") or l:find("%f[%a]FIXME%f[%A]") or l:find("%f[%a]SPEC%f[%A]") or l:find("%f[%a]TASK%f[%A]")
-      if has_tag or l:find("^%s*%- %[ %]") then
-        local t_info = tasks_mod.extract_task_info(l)
-        local slug = t_info and t_info.id
-        local desc = t_info and t_info.desc
-        if not desc or desc == "" then
-          desc = l:gsub("^[ \t]*[#/%-%*%\"]+%s*", ""):gsub("^[A-Z]+%b():?%s*", ""):gsub("^[A-Z]+:%s*", "")
-        end
-        desc = vim.trim(desc or "")
-        if #desc > 60 then desc = desc:sub(1, 57) .. "..." end
-
-        local dist = math.abs(idx - target_line)
-        if dist < min_task_dist then
-          min_task_dist = dist
-          local label = ""
-          if slug and slug ~= "task" and slug ~= "" then
-            label = string.format("[%s]", slug)
-          elseif desc ~= "" then
-            label = string.format("TODO: %s", desc)
-          else
-            label = "TODO: task"
-          end
-          best_task = {
-            type = "task",
-            id = slug,
-            desc = desc,
-            label = label,
-            status = t_info and t_info.status or "TODO",
-            line = idx,
-            dist = dist,
-          }
-        end
-      end
-    end
-  end
-
-  if best_task and min_task_dist <= 120 then
-    return best_task
-  end
-
-  -- 2. Fallback: find nearest enclosing function or symbol definition
+  -- Find nearest enclosing function or symbol definition
   local best_sym = nil
   local min_sym_dist = 999999
   for idx, l in ipairs(lines) do
@@ -195,15 +147,12 @@ function M.find_closest_anchor(filepath, target_line)
     return best_sym
   end
 
-  if best_task then
-    return best_task
-  end
-
   return {
     type = "line",
     line = target_line,
     label = string.format("line %d", target_line),
   }
+end
 end
 
 --- Attach buffer for real-time character addition and deletion tracking
@@ -338,7 +287,7 @@ function M.get_history()
   return res
 end
 
---- Jump to a file entry at its closest task or recorded line
+--- Jump to a file entry at its recorded line
 function M.jump_to(entry, editor_win)
   if not entry or not entry.path then return end
   local path = entry.path
@@ -359,7 +308,6 @@ function M.jump_to(entry, editor_win)
 
   vim.cmd("edit " .. vim.fn.fnameescape(path))
   local total_lines = vim.api.nvim_buf_line_count(0)
-  -- Prioritize jumping directly to the closest in-tree task contract / anchor
   local target_line = (entry.anchor and entry.anchor.line) or entry.line or 1
   target_line = math.min(total_lines, math.max(1, target_line))
   local target_col = entry.col or 0
@@ -406,19 +354,11 @@ local function build_list_lines(entries, current_file)
     local idx_str = string.format("[%d]", idx)
     local file_part = entry.rel_path or vim.fn.fnamemodify(entry.path, ":t")
 
-    -- Extract closest task badge
-    local task_badge = ""
+    -- Extract closest symbol badge
+    local sym_badge = ""
     local anchor = entry.anchor or M.find_closest_anchor(entry.path, entry.line)
-    if anchor and anchor.type == "task" then
-      if anchor.id and anchor.id ~= "task" and anchor.id ~= "" then
-        task_badge = string.format("[@%s]", anchor.id)
-      elseif anchor.desc and anchor.desc ~= "" then
-        task_badge = string.format("[Task: %s]", anchor.desc:sub(1, 24))
-      else
-        task_badge = "[@task]"
-      end
-    elseif anchor and anchor.type == "symbol" then
-      task_badge = string.format("[%s]", anchor.label)
+    if anchor and anchor.type == "symbol" then
+      sym_badge = string.format("[%s]", anchor.label)
     end
 
     local time_str = format_duration(M.get_file_time(entry))
@@ -426,11 +366,11 @@ local function build_list_lines(entries, current_file)
     local cur_badge = is_cur and "  [ACTIVE]" or ""
 
     local padded_file = file_part .. string.rep(" ", math.max(2, max_file_len - #file_part + 2))
-    local padded_task = task_badge ~= "" and (task_badge .. string.rep(" ", math.max(2, 28 - #task_badge))) or string.rep(" ", 28)
+    local padded_sym = sym_badge ~= "" and (sym_badge .. string.rep(" ", math.max(2, 28 - #sym_badge))) or string.rep(" ", 28)
     local padded_time = string.rep(" ", math.max(0, 8 - #time_str)) .. time_str .. "  "
     local padded_edits = edits_str .. string.rep(" ", math.max(0, 16 - #edits_str))
 
-    local line_str = string.format(" %-5s %s %s %s %s%s", idx_str, padded_file, padded_task, padded_time, padded_edits, cur_badge)
+    local line_str = string.format(" %-5s %s %s %s %s%s", idx_str, padded_file, padded_sym, padded_time, padded_edits, cur_badge)
     local line_idx = #lines
     table.insert(lines, line_str)
     line_to_entry[line_idx + 1] = entry
@@ -459,10 +399,10 @@ local function build_list_lines(entries, current_file)
       hl_group = "Function",
     })
 
-    -- Task badge highlight
-    if task_badge ~= "" then
+    -- Symbol badge highlight
+    if sym_badge ~= "" then
       local t_start = f_start + #padded_file
-      local t_end = t_start + #task_badge
+      local t_end = t_start + #sym_badge
       table.insert(highlights, {
         line = line_idx,
         col_start = t_start,
@@ -561,7 +501,7 @@ function M.show_history(opts)
     height = inspector_h,
     style = "minimal",
     border = "rounded",
-    title = " File & Task Context ",
+    title = " File Context ",
     title_pos = "left",
     focusable = false,
     zindex = 150,
@@ -599,7 +539,7 @@ function M.show_history(opts)
     M.jump_to(entry, origin_win)
   end
 
-  -- Dynamic inspector in the bottom bar: shows path, closest task, time spent, edits
+  -- Dynamic inspector in the bottom bar: shows path, symbol scope, time spent, edits
   local function update_inspector()
     if not win or not vim.api.nvim_win_is_valid(win) then return end
     if not M.state.inspector_buf or not vim.api.nvim_buf_is_valid(M.state.inspector_buf) then return end
@@ -626,10 +566,7 @@ function M.show_history(opts)
     )
 
     local l2 = ""
-    if anchor.type == "task" then
-      local desc_str = (anchor.desc and anchor.desc ~= "") and (' "' .. anchor.desc .. '"') or ""
-      l2 = string.format(" Task:   @ %s%s  (status: %s)", anchor.label, desc_str, anchor.status or "TODO")
-    elseif anchor.type == "symbol" then
+    if anchor.type == "symbol" then
       l2 = string.format(" Scope:  @ %s (nearest code definition)", anchor.label)
     else
       l2 = string.format(" Scope:  line %d", anchor.line or entry.line)
@@ -658,7 +595,7 @@ function M.show_history(opts)
     })
     pcall(vim.api.nvim_buf_set_extmark, M.state.inspector_buf, M.state.ns_inspector, 1, 7, {
       end_col = -1,
-      hl_group = (anchor.type == "task") and "Special" or "Comment",
+      hl_group = "Special",
     })
     pcall(vim.api.nvim_buf_set_extmark, M.state.inspector_buf, M.state.ns_inspector, 2, 0, {
       end_col = 7,
