@@ -33,5 +33,5 @@ jobs:
 
       - name: Verify Neovim Startup & Core Commands
         run: |
-          nvim --headless -c "Synvim help" -c "Tasks" -c "Reindex" -c "qall"
+          nvim --headless -c "Synvim help" -c "History" -c "Find" -c "qall"
           echo "synvim configuration verified successfully"
