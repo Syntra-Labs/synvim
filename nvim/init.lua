@@ -544,7 +544,7 @@ require("lsp")
 -- ── Voice Transcription (:Listen) ──
 require("voice").setup()
 
--- ── Sovereign Editor Core (:Find, :History, :Synvim) ──
+-- ── Core Commands (:Find, :History, :Synvim) ──
 require("synvim").setup()
 
 vim.keymap.set("n", "<leader>h", "<Cmd>History<CR>", { silent = true, desc = "Visited files list (:History)" })

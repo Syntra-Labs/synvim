@@ -14,7 +14,7 @@ TARGET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nvim"
 LOCAL_BIN="$HOME/.local/bin"
 
 echo "=========================================================="
-echo "          synvim Sovereign Editor Setup                   "
+echo "          synvim Editor Setup                             "
 echo "=========================================================="
 
 echo "==> [1/2] Deploying Neovim configuration..."

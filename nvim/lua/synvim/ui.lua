@@ -137,7 +137,7 @@ end
 function M.show_help()
   local lines = {
     "╭─────────────────────────────────────────────────────────────╮",
-    "│               synvim — Sovereign Text Editor                │",
+    "│               synvim — Fast, Minimalist Editor              │",
     "╰─────────────────────────────────────────────────────────────╯",
     "",
     " ── Core Commands ──",
