@@ -246,4 +246,30 @@ return {
       })
     end,
   },
+
+  -- Core Modular Plugins (Syntra Labs Ecosystem)
+  {
+    "Syntra-Labs/router",
+    dir = vim.fn.isdirectory(vim.fn.expand("~/code/router")) == 1 and vim.fn.expand("~/code/router") or nil,
+    lazy = false,
+    config = function()
+      require("router").setup()
+    end,
+  },
+  {
+    "Syntra-Labs/taskflow",
+    dir = vim.fn.isdirectory(vim.fn.expand("~/code/taskflow")) == 1 and vim.fn.expand("~/code/taskflow") or nil,
+    lazy = false,
+    config = function()
+      require("taskflow").setup()
+    end,
+  },
+  {
+    "Syntra-Labs/scribe",
+    dir = vim.fn.isdirectory(vim.fn.expand("~/code/scribe")) == 1 and vim.fn.expand("~/code/scribe") or nil,
+    lazy = false,
+    config = function()
+      require("scribe").setup()
+    end,
+  },
 }

@@ -28,6 +28,7 @@ fi
 
 # Clean up deprecated legacy modules if upgrading
 rm -rf "$TARGET_DIR/lua/agent" "$TARGET_DIR/lua/agent.lua" "$TARGET_DIR/bin"
+rm -f "$TARGET_DIR/lua/voice.lua" "$TARGET_DIR/lua/synvim/search.lua" "$TARGET_DIR/lua/synvim/history.lua"
 rm -f "$LOCAL_BIN/agent" "$LOCAL_BIN/agent_transcribe.py"
 
 cp -r "$SCRIPT_DIR/nvim/"* "$TARGET_DIR/"

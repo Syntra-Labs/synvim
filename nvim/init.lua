@@ -541,14 +541,34 @@ vim.keymap.set("n", "ZQ", function() smart_quit({ force = true }) end, { desc = 
 -- ── LSP ──
 require("lsp")
 
--- ── Voice Transcription (:Listen) ──
-require("voice").setup()
+-- ── Add Local Development Repos to Runtimepath ──
+for _, repo in ipairs({ "router", "taskflow", "scribe" }) do
+	local path = vim.fn.expand("~/code/" .. repo)
+	if vim.fn.isdirectory(path) == 1 then
+		vim.opt.rtp:append(path)
+	end
+end
 
--- ── Core Commands (:Find, :History, :Synvim) ──
+-- ── Voice Transcription (:Listen) via Scribe ──
+local ok_scribe, scribe = pcall(require, "scribe")
+if ok_scribe and scribe then
+	scribe.setup()
+end
+
+-- ── Hybrid Search (:Find) via Router ──
+local ok_router, router = pcall(require, "router")
+if ok_router and router then
+	router.setup()
+end
+
+-- ── Tasks & History (:Tasks, :History) via Taskflow ──
+local ok_taskflow, taskflow = pcall(require, "taskflow")
+if ok_taskflow and taskflow then
+	taskflow.setup()
+end
+
+-- ── Core Commands (:Synvim) ──
 require("synvim").setup()
-
-vim.keymap.set("n", "<leader>h", "<Cmd>History<CR>", { silent = true, desc = "Visited files list (:History)" })
-vim.keymap.set("n", "<leader>f", "<Cmd>Find<CR>", { silent = true, desc = "Hybrid search (:Find)" })
 
 
 -- Global statusline
