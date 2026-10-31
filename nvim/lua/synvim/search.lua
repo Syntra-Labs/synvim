@@ -1,5 +1,5 @@
 -- ==============================================================================
--- agent/search.lua: Hybrid Deterministic Code & File Search Engine + :Ask
+-- synvim/search.lua: Hybrid Deterministic Code & File Search Engine
 -- Uses native C++20 LuaJIT FFI (libsynvim_search.so) combining:
 --   1. Smith-Waterman / FZF affine-gap subsequence path & filename alignment
 --   2. Okapi BM25 with corpus IDF rarity & 5-line sliding window proximity
