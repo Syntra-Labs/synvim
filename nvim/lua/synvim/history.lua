@@ -153,7 +153,6 @@ function M.find_closest_anchor(filepath, target_line)
     label = string.format("line %d", target_line),
   }
 end
-end
 
 --- Attach buffer for real-time character addition and deletion tracking
 function M.ensure_buffer_tracked(bufnr)

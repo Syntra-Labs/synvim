@@ -217,11 +217,6 @@ return {
           },
           lualine_x = {
             {
-              "filetype",
-              color = { fg = colors.fg_muted },
-            },
-          },
-            {
               "encoding",
               color = { fg = colors.fg_muted },
             },
